@@ -25,7 +25,7 @@ const params = {
   vignetteOffset: 1.0,
   vignetteDarkness: 1.1,
   // Boat
-  boatHeight: -0.5,
+  boatHeight: -8.0,
   bobSpeed: 1.2,
   bobAmp: 0.6,
 };
@@ -71,7 +71,7 @@ const loadingManager = new THREE.LoadingManager(
   (url, itemsLoaded, itemsTotal) => {
     const progress = itemsLoaded / itemsTotal;
     loadingText.innerText = `Unfolding Paper... ${Math.round(progress * 100)}%`;
-    
+
     if (!loaderSvg.classList.contains("visible")) {
       loaderSvg.classList.add("visible");
       loadingScreen.classList.add("unfolding");
@@ -84,9 +84,9 @@ const loadingManager = new THREE.LoadingManager(
       boatPath.style.display = "block";
       loadingText.innerText = `Folding Boat... ${Math.round(progress * 100)}%`;
     }
-    
+
     if (progress >= 0.9) {
-        loadingText.innerText = "Setting Sail...";
+      loadingText.innerText = "Setting Sail...";
     }
   },
   // On-Error
