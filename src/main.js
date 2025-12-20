@@ -51,22 +51,43 @@ const VignetteShader = {
 };
 
 const loadingScreen = document.getElementById("loading-screen");
+const loaderSvg = document.getElementById("loader-svg");
 const loadingText = document.getElementById("loading-text");
-const loadingWater = document.getElementById("loading-water");
+const boatPath = document.getElementById("boat-path");
+
+boatPath.style.display = "none";
 
 const loadingManager = new THREE.LoadingManager(
   // On-Load
   () => {
-    loadingScreen.style.opacity = 0;
+    loadingScreen.classList.remove("folding");
+    loadingScreen.classList.add("sailing");
+    loadingText.innerText = "Bon Voyage!";
     setTimeout(() => {
       loadingScreen.style.display = "none";
-    }, 500);
+    }, 3000);
   },
   // On-Progress
   (url, itemsLoaded, itemsTotal) => {
-    const progress = (itemsLoaded / itemsTotal) * 100;
-    loadingText.innerText = `${Math.round(progress)}%`;
-    loadingWater.style.height = `${progress}%`;
+    const progress = itemsLoaded / itemsTotal;
+    loadingText.innerText = `Unfolding Paper... ${Math.round(progress * 100)}%`;
+    
+    if (!loaderSvg.classList.contains("visible")) {
+      loaderSvg.classList.add("visible");
+      loadingScreen.classList.add("unfolding");
+    }
+
+    if (progress >= 0.5 && !loadingScreen.classList.contains("folding")) {
+      loadingScreen.classList.remove("unfolding");
+      loadingScreen.classList.add("folding");
+      document.getElementById("paper").style.display = "none";
+      boatPath.style.display = "block";
+      loadingText.innerText = `Folding Boat... ${Math.round(progress * 100)}%`;
+    }
+    
+    if (progress >= 0.9) {
+        loadingText.innerText = "Setting Sail...";
+    }
   },
   // On-Error
   (url) => {
@@ -167,7 +188,7 @@ function init() {
     });
     scene.add(boat);
   });
-
+  // ... (rest of the init function is the same)
   // 4. Post Process
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));

@@ -6,13 +6,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pro Water Simulation</title>
   <link rel="stylesheet" href="src/style.css">
+  <link rel="stylesheet" href="src/loader.css">
 </head>
 
 <body>
-
   <div id="loading-screen">
-    <div id="loading-water"></div>
-    <div id="loading-text">0%</div>
+    <svg id="loader-svg" viewBox="0 0 100 100">
+      <path id="paper" d="M 10 10 L 90 10 L 90 90 L 10 90 Z" />
+      <path id="boat-path" d="M 10 80 L 50 20 L 90 80 L 10 80 Z" />
+    </svg>
+    <div id="loading-text">Loading...</div>
   </div>
 
   <script type="importmap">
