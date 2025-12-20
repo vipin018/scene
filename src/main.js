@@ -50,6 +50,30 @@ const VignetteShader = {
     }`,
 };
 
+const loadingScreen = document.getElementById("loading-screen");
+const loadingText = document.getElementById("loading-text");
+const loadingWater = document.getElementById("loading-water");
+
+const loadingManager = new THREE.LoadingManager(
+  // On-Load
+  () => {
+    loadingScreen.style.opacity = 0;
+    setTimeout(() => {
+      loadingScreen.style.display = "none";
+    }, 500);
+  },
+  // On-Progress
+  (url, itemsLoaded, itemsTotal) => {
+    const progress = (itemsLoaded / itemsTotal) * 100;
+    loadingText.innerText = `${Math.round(progress)}%`;
+    loadingWater.style.height = `${progress}%`;
+  },
+  // On-Error
+  (url) => {
+    console.error(`Error loading ${url}`);
+  }
+);
+
 init();
 
 function init() {
@@ -84,11 +108,19 @@ function init() {
   dirLight.position.set(100, 100, 50);
   scene.add(dirLight);
 
+  // Loaders
+  const textureLoader = new THREE.TextureLoader(loadingManager);
+  const gltfLoader = new GLTFLoader(loadingManager);
+  const draco = new DRACOLoader(loadingManager).setDecoderPath(
+    "https://www.gstatic.com/draco/versioned/decoders/1.5.6/"
+  );
+  gltfLoader.setDRACOLoader(draco);
+
   // 1. Environment Map
   const pmremGenerator = new THREE.PMREMGenerator(renderer);
   pmremGenerator.compileEquirectangularShader();
 
-  new THREE.TextureLoader().load("hdri/env3.jpg", (texture) => {
+  textureLoader.load("hdri/env3.jpg", (texture) => {
     texture.mapping = THREE.EquirectangularReflectionMapping;
     texture.colorSpace = THREE.SRGBColorSpace;
     scene.background = texture;
@@ -110,7 +142,7 @@ function init() {
   water = new Water(waterGeometry, {
     textureWidth: 512,
     textureHeight: 512,
-    waterNormals: new THREE.TextureLoader().load(
+    waterNormals: textureLoader.load(
       "https://threejs.org/examples/textures/waternormals.jpg",
       (t) => (t.wrapS = t.wrapT = THREE.RepeatWrapping)
     ),
@@ -124,10 +156,7 @@ function init() {
   scene.add(water);
 
   // 3. Boat
-  const draco = new DRACOLoader().setDecoderPath(
-    "https://www.gstatic.com/draco/versioned/decoders/1.5.6/"
-  );
-  new GLTFLoader().setDRACOLoader(draco).load("models/boat.glb", (gltf) => {
+  gltfLoader.load("models/boat.glb", (gltf) => {
     boat = gltf.scene;
     boat.scale.set(15, 15, 15);
     boat.traverse((c) => {
@@ -192,7 +221,7 @@ function setupGUI(vignette) {
     .onChange((v) => (water.material.uniforms.size.value = v));
 
   const boatFolder = gui.addFolder("Boat Physics");
-  boatFolder.add(params, "boatHeight", -5, 5);
+  boatFolder.add(params, "boatHeight", -10, 5);
   boatFolder.add(params, "bobSpeed", 0, 4);
   boatFolder.add(params, "bobAmp", 0, 2);
 
