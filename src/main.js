@@ -12,16 +12,16 @@ import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 
 const params = {
-  exposure: 1.0,
+  exposure: 1.1,
+  bgBlur: 0.04,
   bgIntensity: 1.0,
   fogColor: 0x94a1b3,
-  fogDensity: 0.0006,
   // Volumetric Mist Params
   mistColor: 0xdde6ed,
   mistDensity: 0.015,
-  mistHeight: 15.0, // Thickness of the volume
+  mistHeight: 40.0, // How high the volume reaches
+  mistNoiseScale: 0.015, // Frequency of the noise
   mistSpeed: 0.2,
-  mistScale: 0.02,
   // Vignette
   vignetteOffset: 1.0,
   vignetteDarkness: 1.1,
@@ -32,7 +32,7 @@ const params = {
   envIntensity: 1.8,
 };
 
-let scene, camera, renderer, composer, water, boat, mistMaterial;
+let scene, camera, renderer, composer, water, boat, volumeMaterial;
 
 // --- SHADER: VOLUMETRIC RAYMARCHED MIST ---
 const VolumetricMistShader = {
@@ -40,79 +40,69 @@ const VolumetricMistShader = {
     uTime: { value: 0 },
     uColor: { value: new THREE.Color(params.mistColor) },
     uDensity: { value: params.mistDensity },
-    uMistHeight: { value: params.mistHeight },
-    uScale: { value: params.mistScale },
+    uHeight: { value: params.mistHeight },
+    uNoiseScale: { value: params.mistNoiseScale },
     uSpeed: { value: params.mistSpeed },
     uCameraPos: { value: new THREE.Vector3() },
   },
   vertexShader: `
     varying vec3 vWorldPosition;
-    varying vec2 vUv;
+    varying vec3 vLocalPosition;
     void main() {
-      vUv = uv;
+      vLocalPosition = position;
       vec4 worldPosition = modelMatrix * vec4(position, 1.0);
       vWorldPosition = worldPosition.xyz;
       gl_Position = projectionMatrix * viewMatrix * worldPosition;
     }`,
   fragmentShader: `
-    precision highp float;
     uniform float uTime;
     uniform vec3 uColor;
     uniform float uDensity;
-    uniform float uMistHeight;
-    uniform float uScale;
+    uniform float uHeight;
+    uniform float uNoiseScale;
     uniform float uSpeed;
     uniform vec3 uCameraPos;
     varying vec3 vWorldPosition;
-    varying vec2 vUv;
+    varying vec3 vLocalPosition;
 
-    // Fast Pseudo-Random Noise
-    float noise(vec3 p) {
-      vec3 i = floor(p);
-      vec3 f = fract(p);
+    // Simple 3D Noise function for performance
+    float hash(vec3 p) {
+      p = fract(p * 0.3183099 + 0.1);
+      p *= 17.0;
+      return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+    }
+
+    float noise(vec3 x) {
+      vec3 i = floor(x);
+      vec3 f = fract(x);
       f = f * f * (3.0 - 2.0 * f);
-      float n = dot(i, vec3(1.0, 57.0, 113.0));
-      return mix(mix(mix( fract(sin(n + 0.0) * 43758.5453), fract(sin(n + 1.0) * 43758.5453), f.x),
-                 mix( fract(sin(n + 57.0) * 43758.5453), fract(sin(n + 58.0) * 43758.5453), f.x), f.y),
-             mix(mix( fract(sin(n + 113.0) * 43758.5453), fract(sin(n + 114.0) * 43758.5453), f.x),
-                 mix( fract(sin(n + 170.0) * 43758.5453), fract(sin(n + 171.0) * 43758.5453), f.x), f.y), f.z);
+      return mix(mix(mix(hash(i + vec3(0, 0, 0)), hash(i + vec3(1, 0, 0)), f.x),
+                     mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
+                 mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x),
+                     mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
     }
 
     void main() {
       vec3 rayDir = normalize(vWorldPosition - uCameraPos);
-      vec3 currentPos = uCameraPos;
-      
-      // If camera is above the mist, start at the top of the mist box
-      if(currentPos.y > uMistHeight) {
-          float t = (uMistHeight - currentPos.y) / rayDir.y;
-          currentPos = currentPos + t * rayDir;
-      }
+      vec3 rayOrigin = uCameraPos;
 
-      float accumulatedDensity = 0.0;
-      int steps = 12; // Optimized step count for performance
-      float stepSize = 3.0;
+      float totalDensity = 0.0;
+      const int steps = 16; // Low steps for performance
+      float stepSize = uHeight / float(steps);
 
       for(int i = 0; i < steps; i++) {
-        vec3 p = currentPos * uScale;
-        p.x += uTime * uSpeed;
-        p.z += uTime * (uSpeed * 0.5);
-
-        float d = noise(p);
+        vec3 p = rayOrigin + rayDir * (float(i) * stepSize * 2.0);
         
-        // Vertical fade (mist is thicker near the water)
-        float hFade = smoothstep(uMistHeight, 0.0, currentPos.y);
-        accumulatedDensity += d * uDensity * hFade;
-
-        currentPos += rayDir * stepSize;
-        
-        // Stop if we hit the water or go too high
-        if(currentPos.y < 0.0 || currentPos.y > uMistHeight + 10.0) break;
+        // Only sample if within the height bounds of the mist
+        if (p.y > 0.0 && p.y < uHeight) {
+          float hFalloff = 1.0 - (p.y / uHeight); // Thicker at bottom
+          float n = noise(p * uNoiseScale + vec3(uTime * uSpeed, 0.0, uTime * uSpeed * 0.5));
+          totalDensity += n * hFalloff * uDensity;
+        }
       }
 
-      // Edge fade for the box boundaries
-      float edgeFade = smoothstep(1.0, 0.4, length(vUv - 0.5) * 2.0);
-      
-      gl_FragColor = vec4(uColor, accumulatedDensity * edgeFade);
+      totalDensity = clamp(totalDensity, 0.0, 1.0);
+      gl_FragColor = vec4(uColor, totalDensity);
     }`,
 };
 
@@ -138,7 +128,7 @@ init();
 
 function init() {
   scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(params.fogColor, params.fogDensity);
+  // scene.fog = new THREE.FogExp2(params.fogColor, 0.0007);
 
   renderer = new THREE.WebGLRenderer({
     antialias: true,
@@ -153,9 +143,9 @@ function init() {
     45,
     window.innerWidth / window.innerHeight,
     1,
-    15000
+    20000
   );
-  camera.position.set(180, 100, 280);
+  camera.position.set(200, 120, 300);
 
   // 1. Environment
   const pmremGenerator = new THREE.PMREMGenerator(renderer);
@@ -184,22 +174,20 @@ function init() {
   scene.add(water);
 
   // 3. Volumetric Mist Box
-  mistMaterial = new THREE.ShaderMaterial({
+  // We use a large box that represents the "volume" of air fog sits in.
+  volumeMaterial = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.clone(VolumetricMistShader.uniforms),
     vertexShader: VolumetricMistShader.vertexShader,
     fragmentShader: VolumetricMistShader.fragmentShader,
     transparent: true,
     depthWrite: false,
-    side: THREE.BackSide, // Render backfaces so we can go inside the mist
+    side: THREE.BackSide, // Render back of box to avoid clipping when camera enters
     blending: THREE.AdditiveBlending,
   });
-  // A large box that contains the mist volume
-  const mistVolume = new THREE.Mesh(
-    new THREE.BoxGeometry(6000, params.mistHeight * 2, 6000),
-    mistMaterial
-  );
-  mistVolume.position.y = params.mistHeight / 2;
-  scene.add(mistVolume);
+  const volumeGeo = new THREE.BoxGeometry(8000, params.mistHeight, 8000);
+  const volumeMesh = new THREE.Mesh(volumeGeo, volumeMaterial);
+  volumeMesh.position.y = params.mistHeight / 2;
+  scene.add(volumeMesh);
 
   // 4. Boat
   const draco = new DRACOLoader().setDecoderPath(
@@ -218,8 +206,6 @@ function init() {
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   const vignette = new ShaderPass(VignetteShader);
-  vignette.uniforms.offset.value = params.vignetteOffset;
-  vignette.uniforms.darkness.value = params.vignetteDarkness;
   composer.addPass(vignette);
   composer.addPass(new OutputPass());
 
@@ -227,7 +213,9 @@ function init() {
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.enablePan = false;
-  controls.maxPolarAngle = Math.PI / 2 - 0.15;
+  controls.minDistance = 150;
+  controls.maxDistance = 800;
+  controls.maxPolarAngle = Math.PI / 2 - 0.1;
   controls.target.set(0, 15, 0);
 
   setupGUI(controls, vignette);
@@ -237,40 +225,46 @@ function init() {
 function setupGUI(controls, vignette) {
   const gui = new GUI();
 
-  const mist = gui.addFolder("Volumetric Winter Mist");
+  const env = gui.addFolder("Atmosphere");
+  env
+    .add(params, "exposure", 0, 3)
+    .onChange((v) => (renderer.toneMappingExposure = v));
+  env
+    .add(params, "bgIntensity", 0, 3)
+    .onChange((v) => (scene.backgroundIntensity = v));
+
+  const mist = gui.addFolder("Volumetric Mist");
   mist
     .add(params, "mistDensity", 0, 0.1)
     .name("Density")
-    .onChange((v) => (mistMaterial.uniforms.uDensity.value = v));
+    .onChange((v) => (volumeMaterial.uniforms.uDensity.value = v));
   mist
-    .add(params, "mistHeight", 1, 100)
+    .add(params, "mistHeight", 5, 200)
     .name("Volume Height")
     .onChange((v) => {
-      mistMaterial.uniforms.uMistHeight.value = v;
-      // Find the mist mesh in scene and update geometry scale
-      scene.children.forEach((child) => {
-        if (child.material === mistMaterial) {
-          child.scale.y = v / 15; // Rough scale adjust
-          child.position.y = v / 2;
-        }
-      });
+      volumeMaterial.uniforms.uHeight.value = v;
+      // Rescale the box to match the new height
+      const mesh = scene.children.find((c) => c.material === volumeMaterial);
+      mesh.scale.y = v / 40; // Relative to original geometry height
+      mesh.position.y = v / 2;
     });
   mist
-    .add(params, "mistSpeed", 0, 1)
-    .name("Flow Speed")
-    .onChange((v) => (mistMaterial.uniforms.uSpeed.value = v));
+    .add(params, "mistNoiseScale", 0.001, 0.05)
+    .name("Noise Scale")
+    .onChange((v) => (volumeMaterial.uniforms.uNoiseScale.value = v));
+  mist
+    .add(params, "mistSpeed", 0, 2)
+    .name("Wind Speed")
+    .onChange((v) => (volumeMaterial.uniforms.uSpeed.value = v));
   mist
     .addColor(params, "mistColor")
-    .onChange((v) => mistMaterial.uniforms.uColor.value.set(v));
+    .onChange((v) => volumeMaterial.uniforms.uColor.value.set(v));
 
   const boatFolder = gui.addFolder("Boat Physics");
   boatFolder.add(params, "boatHeight", -5, 5);
   boatFolder.add(params, "bobSpeed", 0, 4);
 
   const camFolder = gui.addFolder("Camera & Vignette");
-  camFolder
-    .add(params, "exposure", 0, 3)
-    .onChange((v) => (renderer.toneMappingExposure = v));
   camFolder
     .add(params, "vignetteOffset", 0, 2)
     .onChange((v) => (vignette.uniforms.offset.value = v));
@@ -285,9 +279,9 @@ function animate(controls) {
 
   water.material.uniforms["time"].value += 1.0 / 60.0;
 
-  // Pass dynamic uniforms to volumetric shader
-  mistMaterial.uniforms.uTime.value = time;
-  mistMaterial.uniforms.uCameraPos.value.copy(camera.position);
+  // Update Volumetric Shader
+  volumeMaterial.uniforms.uTime.value = time;
+  volumeMaterial.uniforms.uCameraPos.value.copy(camera.position);
 
   if (boat) {
     boat.position.y =
