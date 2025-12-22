@@ -110,6 +110,7 @@ function init() {
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = params.exposure;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.antialias = true;
 
   document.body.appendChild(renderer.domElement);
 
