@@ -3,4 +3,92 @@ body {
   padding: 0;
   overflow: hidden;
   background-color: #050505;
+  font-family: "Inter", sans-serif;
+}
+
+canvas {
+  display: block;
+}
+
+/* --- LOADING SCREEN --- */
+#loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Cinematic Curtains */
+.curtain {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50.5%; /* Slight overlap to prevent 1px gap */
+  background-color: #080808;
+  transition: transform 1.5s cubic-bezier(0.8, 0, 0.2, 1);
+}
+.curtain.top {
+  top: 0;
+}
+.curtain.bottom {
+  bottom: 0;
+}
+
+/* Center UI */
+.loader-content {
+  position: relative;
+  z-index: 10;
+  width: 250px;
+  text-align: center;
+  transition: opacity 0.8s ease;
+}
+
+.progress-container {
+  width: 100%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 15px;
+}
+
+#progress-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #fff;
+  transform: translateX(-100%);
+  transition: transform 0.2s ease-out;
+}
+
+#loading-text {
+  color: #fff;
+  font-size: 10px;
+  letter-spacing: 0.6em;
+  text-transform: uppercase;
+  font-weight: 200;
+}
+
+/* Exit Animation */
+#loading-screen.finished {
+  /* THIS IS THE MISSING PIECE: */
+  pointer-events: none;
+}
+
+#loading-screen.finished .curtain.top {
+  transform: translateY(-100%);
+}
+
+#loading-screen.finished .curtain.bottom {
+  transform: translateY(100%);
+}
+
+#loading-screen.finished .loader-content {
+  opacity: 0;
+  /* You can keep this here too, but the one above is the critical one */
+  pointer-events: none;
 }

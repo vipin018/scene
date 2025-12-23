@@ -30,7 +30,7 @@ const params = {
   bobAmp: 0.6,
 };
 
-let scene, camera, renderer, composer, water, boat;
+let scene, camera, renderer, composer, water, boat, controls;
 
 // --- SHADER: VIGNETTE ---
 const VignetteShader = {
@@ -50,48 +50,23 @@ const VignetteShader = {
     }`,
 };
 
-const loadingScreen = document.getElementById("loading-screen");
-const loaderSvg = document.getElementById("loader-svg");
+const progressLine = document.getElementById("progress-line");
 const loadingText = document.getElementById("loading-text");
-const boatPath = document.getElementById("boat-path");
-
-boatPath.style.display = "none";
+const loadingScreen = document.getElementById("loading-screen");
 
 const loadingManager = new THREE.LoadingManager(
-  // On-Load
   () => {
-    loadingScreen.classList.remove("folding");
-    loadingScreen.classList.add("sailing");
-    loadingText.innerText = "Bon Voyage!";
     setTimeout(() => {
-      loadingScreen.style.display = "none";
-    }, 3000);
+      loadingScreen.classList.add("finished");
+      animate(); // Start loop only after loading
+    }, 500);
   },
-  // On-Progress
   (url, itemsLoaded, itemsTotal) => {
     const progress = itemsLoaded / itemsTotal;
-    loadingText.innerText = `Unfolding Paper... ${Math.round(progress * 100)}%`;
-
-    if (!loaderSvg.classList.contains("visible")) {
-      loaderSvg.classList.add("visible");
-      loadingScreen.classList.add("unfolding");
+    if (progressLine) {
+      progressLine.style.transform = `translateX(${-100 + progress * 100}%)`;
     }
-
-    if (progress >= 0.5 && !loadingScreen.classList.contains("folding")) {
-      loadingScreen.classList.remove("unfolding");
-      loadingScreen.classList.add("folding");
-      document.getElementById("paper").style.display = "none";
-      boatPath.style.display = "block";
-      loadingText.innerText = `Folding Boat... ${Math.round(progress * 100)}%`;
-    }
-
-    if (progress >= 0.9) {
-      loadingText.innerText = "Setting Sail...";
-    }
-  },
-  // On-Error
-  (url) => {
-    console.error(`Error loading ${url}`);
+    loadingText.innerText = `PREPARING VOYAGE ${Math.round(progress * 100)}%`;
   }
 );
 
@@ -110,7 +85,7 @@ function init() {
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = params.exposure;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.antialias = true;
+  // renderer.antialias = true;
 
   document.body.appendChild(renderer.domElement);
 
@@ -198,18 +173,17 @@ function init() {
   composer.addPass(new OutputPass());
 
   // 5. Controls
-  const controls = new OrbitControls(camera, renderer.domElement);
+  controls = new OrbitControls(camera, renderer.domElement); // Remove 'const'
   controls.enableDamping = true;
   controls.maxPolarAngle = Math.PI / 2 - 0.1;
   controls.target.set(0, 15, 0);
 
   setupGUI(vignette);
-  animate(controls);
 }
 
 function setupGUI(vignette) {
   const gui = new GUI();
-
+  gui.close(); // Start closed
   const env = gui.addFolder("Atmosphere");
   env
     .add(params, "exposure", 0, 3)
@@ -258,8 +232,10 @@ function setupGUI(vignette) {
   if (window.innerWidth < 768) gui.close();
 }
 
-function animate(controls) {
-  requestAnimationFrame(() => animate(controls));
+function animate() {
+  // Remove parameter
+  requestAnimationFrame(animate); // Simplified call
+
   const time = performance.now() * 0.001;
 
   if (water) {
@@ -273,7 +249,9 @@ function animate(controls) {
     boat.rotation.x = Math.cos(time * params.bobSpeed * 0.5) * 0.03;
   }
 
-  controls.update();
+  // Check if controls exist before updating to be safe
+  if (controls) controls.update();
+
   composer.render();
 }
 
