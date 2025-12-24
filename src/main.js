@@ -25,9 +25,11 @@ const params = {
   vignetteOffset: 1.0,
   vignetteDarkness: 1.1,
   // Boat
-  boatHeight: -0.5,
+  boatHeight: 5,
   bobSpeed: 1.2,
   bobAmp: 0.6,
+  XPosition: 40,
+  ZPosition: -20,
 };
 
 let scene, camera, renderer, composer, water, boat, controls;
@@ -95,7 +97,8 @@ function init() {
     1,
     20000
   );
-  camera.position.set(200, 120, 300);
+  camera.position.set(-102.62, 51.94, 290.19);
+  // controls.target.set(-7.62, 49.93, -15.09);
 
   // Lighting Fallbacks
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -153,9 +156,17 @@ function init() {
   scene.add(water);
 
   // 3. Boat
-  gltfLoader.load("models/boat.glb", (gltf) => {
+  gltfLoader.load("models/rowing_boat.glb", (gltf) => {
     boat = gltf.scene;
-    boat.scale.set(15, 15, 15);
+    boat.scale.set(0.025, 0.025, 0.025);
+
+    // NEW: Rotate the boat so it's not pointing straight away
+    // Math.PI / 4 gives a nice 45-degree angle
+    boat.rotation.y = Math.PI / 1.2;
+
+    // Initial position based on params
+    boat.position.set(params.XPosition, params.boatHeight, params.ZPosition);
+
     boat.traverse((c) => {
       if (c.isMesh) {
         c.material.envMapIntensity = params.envIntensity;
@@ -176,7 +187,7 @@ function init() {
   controls = new OrbitControls(camera, renderer.domElement); // Remove 'const'
   controls.enableDamping = true;
   controls.maxPolarAngle = Math.PI / 2 - 0.1;
-  controls.target.set(0, 15, 0);
+  controls.target.set(0, 10, 0);
 
   setupGUI(vignette);
 }
@@ -220,6 +231,14 @@ function setupGUI(vignette) {
   boatFolder.add(params, "boatHeight", -10, 5);
   boatFolder.add(params, "bobSpeed", 0, 4);
   boatFolder.add(params, "bobAmp", 0, 2);
+  boatFolder.add(params, "distortionScale", 0, 20);
+  boatFolder.add(params, "waterSize", 0.1, 10);
+  boatFolder.add(params, "XPosition", -100, 100).onChange((v) => {
+    if (boat) boat.position.x = v;
+  });
+  boatFolder.add(params, "ZPosition", -100, 100).onChange((v) => {
+    if (boat) boat.position.z = v;
+  });
 
   const camFolder = gui.addFolder("Post-Process");
   camFolder
@@ -232,10 +251,27 @@ function setupGUI(vignette) {
   if (window.innerWidth < 768) gui.close();
 }
 
-function animate() {
-  // Remove parameter
-  requestAnimationFrame(animate); // Simplified call
+// Log position and target on change
+controls.addEventListener("change", () => {
+  const pos = camera.position;
+  const tar = controls.target;
 
+  console.clear(); // Keeps the console clean
+  console.log("--- CAMERA SETTINGS ---");
+  console.log(
+    `camera.position.set(${pos.x.toFixed(2)}, ${pos.y.toFixed(
+      2
+    )}, ${pos.z.toFixed(2)});`
+  );
+  console.log(
+    `controls.target.set(${tar.x.toFixed(2)}, ${tar.y.toFixed(
+      2
+    )}, ${tar.z.toFixed(2)});`
+  );
+});
+
+function animate() {
+  requestAnimationFrame(animate);
   const time = performance.now() * 0.001;
 
   if (water) {
@@ -243,15 +279,21 @@ function animate() {
   }
 
   if (boat) {
+    // Up and down bobbing
     boat.position.y =
       params.boatHeight + Math.sin(time * params.bobSpeed) * params.bobAmp;
-    boat.rotation.z = Math.sin(time * params.bobSpeed * 0.8) * 0.05;
-    boat.rotation.x = Math.cos(time * params.bobSpeed * 0.5) * 0.03;
+
+    // Side-to-side rocking (Roll)
+    boat.rotation.z = Math.sin(time * params.bobSpeed * 0.5) * 0.01;
+
+    // Front-to-back rocking (Pitch)
+    boat.rotation.x = Math.cos(time * params.bobSpeed * 0.3) * 0.01;
+
+    // Subtle yaw (drifting)
+    boat.rotation.y -= Math.sin(time * 0.001) * 0.01;
   }
 
-  // Check if controls exist before updating to be safe
   if (controls) controls.update();
-
   composer.render();
 }
 
